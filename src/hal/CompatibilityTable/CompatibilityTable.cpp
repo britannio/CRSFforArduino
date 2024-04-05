@@ -101,7 +101,7 @@ namespace hal
         device.type.devboard = DEVBOARD_ARDUINO_NANO_RP2040_CONNECT;
 
 // Raspberry Pi Pico
-#elif defined(ARDUINO_RASPBERRY_PI_PICO)
+#elif defined(ARDUINO_RASPBERRY_PI_PICO) || defined(ARDUINO_RASPBERRY_PI_PICO_W)
         device.type.devboard = DEVBOARD_RASPBERRYPI_PICO;
 #else
         // The architecture and chip is known, but the board is not.
