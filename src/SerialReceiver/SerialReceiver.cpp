@@ -280,33 +280,31 @@ namespace serialReceiverLayer
                     telemetry->sendTelemetryData(_uart);
                 }
 #endif
-                bool failsafe = _rcChannels->failsafe;
+                const bool prevFailsafe = _rcChannels->failsafe;
+                crsf->getFailSafe(&_rcChannels->failsafe);
                 switch (frameType)
                 {
 #if CRSF_LINK_STATISTICS_ENABLED > 0
                     case crsfProtocol::CRSF_FRAMETYPE_LINK_STATISTICS:
+                        crsf->getLinkStatistics(&_linkStatistics);
                         if (_linkStatisticsCallback != nullptr)
                         {
-                            crsf->getLinkStatistics(&_linkStatistics);
                             _linkStatisticsCallback(_linkStatistics);
                         }
                         break;
 #endif
 #if CRSF_RC_ENABLED > 0
                     case crsfProtocol::CRSF_FRAMETYPE_RC_CHANNELS_PACKED:
+                        crsf->getRcChannels(_rcChannels->value);
                         if (_rcChannelsCallback != nullptr)
                         {
-                            crsf->getFailSafe(&_rcChannels->failsafe);
-                            crsf->getRcChannels(_rcChannels->value);
-                            // Calling this even if the received frame is not an RC frame
-                            //                  // because the failsafe flag may have changed.
                             _rcChannelsCallback(_rcChannels);
                         }
                         break;
 #endif
                 }
 
-                if (frameType != crsfProtocol::CRSF_FRAMETYPE_RC_CHANNELS_PACKED && failsafe != _rcChannels->failsafe)
+                if (frameType != crsfProtocol::CRSF_FRAMETYPE_RC_CHANNELS_PACKED && prevFailsafe != _rcChannels->failsafe)
                 {
                     // We did not receive an RC frame, but the failsafe flag has changed.
                 }
