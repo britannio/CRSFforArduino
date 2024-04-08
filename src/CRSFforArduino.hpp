@@ -64,6 +64,7 @@ namespace sketchLayer
         void telemetryWriteFlightMode(serialReceiverLayer::flightModeId_t flightMode, bool disarmed = false);
         void telemetryWriteCustomFlightMode(const char *flightMode, bool armed = false);
         void telemetryWriteGPS(float latitude, float longitude, float altitude, float speed, float groundCourse, uint8_t satellites);
+        void telemetryWriteCustomPayload(uint8_t id, uint8_t *data, uint8_t length);
 
       private:
     };

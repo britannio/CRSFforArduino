@@ -141,6 +141,13 @@ namespace serialReceiverLayer
             sendFrame = true;
         }
 #endif
+        if (currentSchedule & (1 << CRSF_TELEMETRY_FRAME_CUSTOM_PAYLOAD_INDEX))
+        {
+            _initialiseFrame();
+            _appendCustomPayloadData();
+            _finaliseFrame();
+            sendFrame = true;
+        }
 
         scheduleIndex = (scheduleIndex + 1) % _telemetryFrameScheduleCount;
 
@@ -222,6 +229,19 @@ namespace serialReceiverLayer
         (void)speed;
         (void)course;
         (void)satellites;
+#endif
+    }
+
+    void Telemetry::setCustomPayload(uint8_t id, const uint8_t *data, uint8_t length)
+    {
+#if CRSF_TELEMETRY_ENABLED > 0
+        _telemetryData.customPayload.id = id;
+        _telemetryData.customPayload.length = length;
+        memcpy(_telemetryData.customPayload.data, data, length);
+#else
+        (void)id;
+        (void)data;
+        (void)length;
 #endif
     }
 
@@ -309,6 +329,16 @@ namespace serialReceiverLayer
         SerialBuffer::writeU16BE(_telemetryData.gps.groundCourse);
         SerialBuffer::writeU16BE(_telemetryData.gps.altitude);
         SerialBuffer::writeU8(_telemetryData.gps.satellites);
+    }
+
+    void Telemetry::_appendCustomPayloadData()
+    {
+        SerialBuffer::writeU8(_telemetryData.customPayload.length + CRSF_FRAME_LENGTH_TYPE_CRC);
+        SerialBuffer::writeU8(_telemetryData.customPayload.id);
+        for (uint8_t i = 0; i < _telemetryData.customPayload.length; i++)
+        {
+            SerialBuffer::writeU8(_telemetryData.customPayload.data[i]);
+        }
     }
 
     void Telemetry::_finaliseFrame()

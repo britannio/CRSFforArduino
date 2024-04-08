@@ -34,7 +34,8 @@ namespace sketchLayer
      * @brief Construct a new CRSFforArduino object.
      * 
      */
-    CRSFforArduino::CRSFforArduino() : SerialReceiver()
+    CRSFforArduino::CRSFforArduino() :
+        SerialReceiver()
     {
     }
 
@@ -43,7 +44,8 @@ namespace sketchLayer
      * 
      * @param serialPort 
      */
-    CRSFforArduino::CRSFforArduino(HardwareSerial *serialPort) : SerialReceiver(serialPort)
+    CRSFforArduino::CRSFforArduino(HardwareSerial *serialPort) :
+        SerialReceiver(serialPort)
     {
     }
 
@@ -53,7 +55,8 @@ namespace sketchLayer
      * @param rxPin 
      * @param txPin 
      */
-    CRSFforArduino::CRSFforArduino(HardwareSerial *serialPort, int rxPin, int txPin) : SerialReceiver(serialPort, rxPin, txPin)
+    CRSFforArduino::CRSFforArduino(HardwareSerial *serialPort, int rxPin, int txPin) :
+        SerialReceiver(serialPort, rxPin, txPin)
     {
     }
 
@@ -365,4 +368,18 @@ namespace sketchLayer
         (void)satellites;
 #endif
     }
+    void CRSFforArduino::telemetryWriteCustomPayload(uint8_t id, uint8_t *data, uint8_t length)
+    {
+#if CRSF_TELEMETRY_ENABLED > 0
+        this->SerialReceiver::telemetryWriteCustomPayload(id, data, length);
+#else
+        {
+            // Prevent compiler warnings
+            (void)id;
+            (void)data;
+            (void)length;
+        }
+#endif
+    }
+
 } // namespace sketchLayer

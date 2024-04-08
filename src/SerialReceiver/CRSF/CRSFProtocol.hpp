@@ -150,6 +150,7 @@ namespace crsfProtocol
         CRSF_TELEMETRY_FRAME_GPS_INDEX,
         // CRSF_TELEMETRY_FRAME_HEARTBEAT_INDEX,
         // CRSF_TELEMETRY_FRAME_VARIO_INDEX,
+        CRSF_TELEMETRY_FRAME_CUSTOM_PAYLOAD_INDEX,
         CRSF_TELEMETRY_FRAME_SCHEDULE_MAX
     } telemetryFrame_t;
 
@@ -249,6 +250,13 @@ namespace crsfProtocol
         uint8_t satellites;
     } gpsData_t;
 
+    typedef struct customPayload_s
+    {
+        uint8_t id;
+        uint8_t data[CRSF_PAYLOAD_SIZE_MAX];
+        uint8_t length;
+    } customPayload_t;
+
     // Struct to hold data for the telemetry frame.
     typedef struct telemetryData_s
     {
@@ -257,7 +265,9 @@ namespace crsfProtocol
         batterySensorData_t battery;
         flightModeData_t flightMode;
         gpsData_t gps;
+        customPayload_t customPayload;
     } telemetryData_t;
+
 
     enum baudRate_e
     {

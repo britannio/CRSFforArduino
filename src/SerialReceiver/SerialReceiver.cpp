@@ -520,5 +520,9 @@ namespace serialReceiverLayer
         telemetry->setGPSData(latitude, longitude, altitude, speed, groundCourse, satellites);
     }
 #endif
+    void SerialReceiver::telemetryWriteCustomPayload(uint8_t id, uint8_t *data, uint8_t length)
+    {
+        telemetry->setCustomPayload(id, data, length);
+    }
 #endif
 } // namespace serialReceiverLayer
