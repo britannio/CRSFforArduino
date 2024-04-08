@@ -76,6 +76,10 @@ namespace serialReceiverLayer
         _telemetryFrameSchedule[index++] = (1 << CRSF_TELEMETRY_FRAME_GPS_INDEX);
 #endif
 
+#if CRSF_TELEMETRY_ENABLED > 0
+        _telemetryFrameSchedule[index++] = (1 << CRSF_TELEMETRY_FRAME_CUSTOM_PAYLOAD_INDEX);
+#endif
+
         _telemetryFrameScheduleCount = index;
     }
 
