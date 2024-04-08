@@ -77,7 +77,7 @@ namespace serialReceiverLayer
         _uart = hwUartPort;
 
 #if defined(ARDUINO_ARCH_ESP32)
-        #if defined(D0)
+#if defined(D0)
         _rxPin = D0;
 #else
         _rxPin = 0;
@@ -270,255 +270,272 @@ namespace serialReceiverLayer
     {
         while (_uart->available() > 0)
         {
-            if (crsf->receiveFrames((uint8_t)_uart->read()))
+            uint8_t frameType = crsf->receiveFrames((uint8_t)_uart->read());
+            flushRemainingFrames();
+            if (frameType)
             {
-                flushRemainingFrames();
-
-#if CRSF_LINK_STATISTICS_ENABLED > 0
-                crsf->getLinkStatistics(&_linkStatistics);
-                if (_linkStatisticsCallback != nullptr)
-                {
-                    _linkStatisticsCallback(_linkStatistics);
-                }
-#endif
-
 #if CRSF_TELEMETRY_ENABLED > 0
                 if (telemetry->update())
                 {
                     telemetry->sendTelemetryData(_uart);
                 }
 #endif
-
-#if CRSF_RC_ENABLED > 0
-                crsf->getFailSafe(&_rcChannels->failsafe);
-                crsf->getRcChannels(_rcChannels->value);
-                if (_rcChannelsCallback != nullptr)
+                bool failsafe = _rcChannels->failsafe;
+                switch (frameType)
                 {
-                    _rcChannelsCallback(_rcChannels);
-                }
+#if CRSF_LINK_STATISTICS_ENABLED > 0
+                    case crsfProtocol::CRSF_FRAMETYPE_LINK_STATISTICS:
+                        if (_linkStatisticsCallback != nullptr)
+                        {
+                            crsf->getLinkStatistics(&_linkStatistics);
+                            _linkStatisticsCallback(_linkStatistics);
+                        }
+                        break;
 #endif
+#if CRSF_RC_ENABLED > 0
+                    case crsfProtocol::CRSF_FRAMETYPE_RC_CHANNELS_PACKED:
+                        if (_rcChannelsCallback != nullptr)
+                        {
+                            crsf->getFailSafe(&_rcChannels->failsafe);
+                            crsf->getRcChannels(_rcChannels->value);
+                            // Calling this even if the received frame is not an RC frame
+                            //                  // because the failsafe flag may have changed.
+                            _rcChannelsCallback(_rcChannels);
+                        }
+                        break;
+#endif
+                }
+
+                if (frameType != crsfProtocol::CRSF_FRAMETYPE_RC_CHANNELS_PACKED && failsafe != _rcChannels->failsafe)
+                {
+                    // We did not receive an RC frame, but the failsafe flag has changed.
+                }
+                    if (_rcChannelsCallback != nullptr)
+                    {
+                        _rcChannelsCallback(_rcChannels);
+                    }
+                }
             }
         }
-    }
 #endif
 
 #if CRSF_LINK_STATISTICS_ENABLED > 0
-    void SerialReceiver::setLinkStatisticsCallback(linkStatisticsCallback_t callback)
-    {
-        _linkStatisticsCallback = callback;
-    }
+        void SerialReceiver::setLinkStatisticsCallback(linkStatisticsCallback_t callback)
+        {
+            _linkStatisticsCallback = callback;
+        }
 #endif
 
 #if CRSF_RC_ENABLED > 0 || CRSF_TELEMETRY_ENABLED > 0 || CRSF_LINK_STATISTICS_ENABLED > 0
-    void SerialReceiver::flushRemainingFrames()
-    {
-        _uart->flush();
-        while (_uart->available() > 0)
+        void SerialReceiver::flushRemainingFrames()
         {
-            _uart->read();
+            _uart->flush();
+            while (_uart->available() > 0)
+            {
+                _uart->read();
+            }
         }
-    }
 #endif
 
 #if CRSF_RC_ENABLED > 0
-    void SerialReceiver::setRcChannelsCallback(rcChannelsCallback_t callback)
-    {
-        _rcChannelsCallback = callback;
-    }
-
-    uint16_t SerialReceiver::readRcChannel(uint8_t channel, bool raw)
-    {
-        if (channel <= 15)
+        void SerialReceiver::setRcChannelsCallback(rcChannelsCallback_t callback)
         {
-            if (raw == true)
+            _rcChannelsCallback = callback;
+        }
+
+        uint16_t SerialReceiver::readRcChannel(uint8_t channel, bool raw)
+        {
+            if (channel <= 15)
             {
-                return _rcChannels->value[channel];
-            }
-            else
-            {
-                /* Convert RC value from raw to microseconds.
+                if (raw == true)
+                {
+                    return _rcChannels->value[channel];
+                }
+                else
+                {
+                    /* Convert RC value from raw to microseconds.
                 - Mininum: 172 (988us)
                 - Middle: 992 (1500us)
                 - Maximum: 1811 (2012us)
                 - Scale factor = (2012 - 988) / (1811 - 172) = 0.62477120195241
                 - Offset = 988 - 172 * 0.62477120195241 = 880.53935326418548
                 */
-                return (uint16_t)((_rcChannels->value[channel] * 0.62477120195241F) + 881);
+                    return (uint16_t)((_rcChannels->value[channel] * 0.62477120195241F) + 881);
+                }
+            }
+            else
+            {
+                return 0;
             }
         }
-        else
+
+        uint16_t SerialReceiver::getChannel(uint8_t channel)
         {
-            return 0;
+            return readRcChannel(channel, true);
         }
-    }
 
-    uint16_t SerialReceiver::getChannel(uint8_t channel)
-    {
-        return readRcChannel(channel, true);
-    }
+        uint16_t SerialReceiver::rcToUs(uint16_t rc)
+        {
+            return (uint16_t)((rc * 0.62477120195241F) + 881);
+        }
 
-    uint16_t SerialReceiver::rcToUs(uint16_t rc)
-    {
-        return (uint16_t)((rc * 0.62477120195241F) + 881);
-    }
-
-    uint16_t SerialReceiver::usToRc(uint16_t us)
-    {
-        return (uint16_t)((us - 881) / 0.62477120195241F);
-    }
+        uint16_t SerialReceiver::usToRc(uint16_t us)
+        {
+            return (uint16_t)((us - 881) / 0.62477120195241F);
+        }
 
 #if CRSF_FLIGHTMODES_ENABLED > 0
-    bool SerialReceiver::setFlightMode(flightModeId_t flightModeId, const char *flightModeName, uint8_t channel, uint16_t min, uint16_t max)
-    {
-        if (flightModeId < FLIGHT_MODE_COUNT && flightModeName != nullptr && channel <= 15)
+        bool SerialReceiver::setFlightMode(flightModeId_t flightModeId, const char *flightModeName, uint8_t channel, uint16_t min, uint16_t max)
         {
-            if (strlen(flightModeName) > 16)
+            if (flightModeId < FLIGHT_MODE_COUNT && flightModeName != nullptr && channel <= 15)
+            {
+                if (strlen(flightModeName) > 16)
+                {
+                    return false;
+                }
+
+                _flightModes[flightModeId].name = flightModeName;
+                _flightModes[flightModeId].channel = channel;
+                _flightModes[flightModeId].min = min;
+                _flightModes[flightModeId].max = max;
+                return true;
+            }
+            else
             {
                 return false;
             }
-
-            _flightModes[flightModeId].name = flightModeName;
-            _flightModes[flightModeId].channel = channel;
-            _flightModes[flightModeId].min = min;
-            _flightModes[flightModeId].max = max;
-            return true;
         }
-        else
-        {
-            return false;
-        }
-    }
 
-    [[deprecated]] bool SerialReceiver::setFlightMode(flightModeId_t flightMode, uint8_t channel, uint16_t min, uint16_t max)
-    {
-        if (flightMode < FLIGHT_MODE_COUNT && channel <= 15)
+        [[deprecated]] bool SerialReceiver::setFlightMode(flightModeId_t flightMode, uint8_t channel, uint16_t min, uint16_t max)
         {
-            _flightModes[flightMode].channel = channel;
-            _flightModes[flightMode].min = min;
-            _flightModes[flightMode].max = max;
-            return true;
-        }
-        else
-        {
-            return false;
-        }
-    }
-
-    void SerialReceiver::setFlightModeCallback(flightModeCallback_t callback)
-    {
-        _flightModeCallback = callback;
-    }
-
-    void SerialReceiver::handleFlightMode()
-    {
-        if (_flightModeCallback != nullptr)
-        {
-            for (size_t i = 0; i < (size_t)FLIGHT_MODE_COUNT; i++)
+            if (flightMode < FLIGHT_MODE_COUNT && channel <= 15)
             {
-                if (_rcChannels->value[_flightModes[i].channel] >= _flightModes[i].min && _rcChannels->value[_flightModes[i].channel] <= _flightModes[i].max)
+                _flightModes[flightMode].channel = channel;
+                _flightModes[flightMode].min = min;
+                _flightModes[flightMode].max = max;
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        void SerialReceiver::setFlightModeCallback(flightModeCallback_t callback)
+        {
+            _flightModeCallback = callback;
+        }
+
+        void SerialReceiver::handleFlightMode()
+        {
+            if (_flightModeCallback != nullptr)
+            {
+                for (size_t i = 0; i < (size_t)FLIGHT_MODE_COUNT; i++)
                 {
-                    _flightModeCallback((flightModeId_t)i);
-                    break;
+                    if (_rcChannels->value[_flightModes[i].channel] >= _flightModes[i].min && _rcChannels->value[_flightModes[i].channel] <= _flightModes[i].max)
+                    {
+                        _flightModeCallback((flightModeId_t)i);
+                        break;
+                    }
                 }
             }
         }
-    }
 #endif
 #endif
 
 #if CRSF_TELEMETRY_ENABLED > 0
 #if CRSF_TELEMETRY_ATTITUDE_ENABLED > 0
-    void SerialReceiver::telemetryWriteAttitude(int16_t roll, int16_t pitch, int16_t yaw)
-    {
-        telemetry->setAttitudeData(roll, pitch, yaw);
-    }
+        void SerialReceiver::telemetryWriteAttitude(int16_t roll, int16_t pitch, int16_t yaw)
+        {
+            telemetry->setAttitudeData(roll, pitch, yaw);
+        }
 #endif
 
 #if CRSF_TELEMETRY_BAROALTITUDE_ENABLED > 0
-    void SerialReceiver::telemetryWriteBaroAltitude(uint16_t altitude, int16_t vario)
-    {
-        telemetry->setBaroAltitudeData(altitude, vario);
-    }
+        void SerialReceiver::telemetryWriteBaroAltitude(uint16_t altitude, int16_t vario)
+        {
+            telemetry->setBaroAltitudeData(altitude, vario);
+        }
 #endif
 
 #if CRSF_TELEMETRY_BATTERY_ENABLED > 0
-    void SerialReceiver::telemetryWriteBattery(float voltage, float current, uint32_t fuel, uint8_t percent)
-    {
-        telemetry->setBatteryData(voltage, current, fuel, percent);
-    }
+        void SerialReceiver::telemetryWriteBattery(float voltage, float current, uint32_t fuel, uint8_t percent)
+        {
+            telemetry->setBatteryData(voltage, current, fuel, percent);
+        }
 #endif
 
 #if CRSF_TELEMETRY_FLIGHTMODE_ENABLED > 0
-    void SerialReceiver::telemetryWriteFlightMode(flightModeId_t flightMode, bool disarmed)
-    {
-        if (flightMode != FLIGHT_MODE_DISARMED)
+        void SerialReceiver::telemetryWriteFlightMode(flightModeId_t flightMode, bool disarmed)
         {
-            switch (flightMode)
+            if (flightMode != FLIGHT_MODE_DISARMED)
             {
-                case FLIGHT_MODE_FAILSAFE:
-                    flightModeStr = "!FS!";
-                    break;
-                case FLIGHT_MODE_GPS_RESCUE:
-                    flightModeStr = "RTH";
-                    break;
-                case FLIGHT_MODE_PASSTHROUGH:
-                    flightModeStr = "MANU";
-                    break;
-                case FLIGHT_MODE_ANGLE:
-                    flightModeStr = "STAB";
-                    break;
-                case FLIGHT_MODE_HORIZON:
-                    flightModeStr = "HOR";
-                    break;
-                case FLIGHT_MODE_AIRMODE:
-                    flightModeStr = "AIR";
-                    break;
+                switch (flightMode)
+                {
+                    case FLIGHT_MODE_FAILSAFE:
+                        flightModeStr = "!FS!";
+                        break;
+                    case FLIGHT_MODE_GPS_RESCUE:
+                        flightModeStr = "RTH";
+                        break;
+                    case FLIGHT_MODE_PASSTHROUGH:
+                        flightModeStr = "MANU";
+                        break;
+                    case FLIGHT_MODE_ANGLE:
+                        flightModeStr = "STAB";
+                        break;
+                    case FLIGHT_MODE_HORIZON:
+                        flightModeStr = "HOR";
+                        break;
+                    case FLIGHT_MODE_AIRMODE:
+                        flightModeStr = "AIR";
+                        break;
 
 #if CRSF_CUSTOM_FLIGHT_MODES_ENABLED > 0
-                /* All 8 custom flight modes are handled here. */
-                case CUSTOM_FLIGHT_MODE1:
-                    [[fallthrough]];
-                case CUSTOM_FLIGHT_MODE2:
-                    [[fallthrough]];
-                case CUSTOM_FLIGHT_MODE3:
-                    [[fallthrough]];
-                case CUSTOM_FLIGHT_MODE4:
-                    [[fallthrough]];
-                case CUSTOM_FLIGHT_MODE5:
-                    [[fallthrough]];
-                case CUSTOM_FLIGHT_MODE6:
-                    [[fallthrough]];
-                case CUSTOM_FLIGHT_MODE7:
-                    [[fallthrough]];
-                case CUSTOM_FLIGHT_MODE8:
-                    flightModeStr = _flightModes[flightMode].name;
-                    break;
+                    /* All 8 custom flight modes are handled here. */
+                    case CUSTOM_FLIGHT_MODE1:
+                        [[fallthrough]];
+                    case CUSTOM_FLIGHT_MODE2:
+                        [[fallthrough]];
+                    case CUSTOM_FLIGHT_MODE3:
+                        [[fallthrough]];
+                    case CUSTOM_FLIGHT_MODE4:
+                        [[fallthrough]];
+                    case CUSTOM_FLIGHT_MODE5:
+                        [[fallthrough]];
+                    case CUSTOM_FLIGHT_MODE6:
+                        [[fallthrough]];
+                    case CUSTOM_FLIGHT_MODE7:
+                        [[fallthrough]];
+                    case CUSTOM_FLIGHT_MODE8:
+                        flightModeStr = _flightModes[flightMode].name;
+                        break;
 #endif
 
-                default:
-                    flightModeStr = "ACRO";
-                    break;
+                    default:
+                        flightModeStr = "ACRO";
+                        break;
+                }
             }
+            else
+            {
+                disarmed = true;
+            }
+
+            telemetry->setFlightModeData(flightModeStr, disarmed);
         }
-        else
+
+        [[deprecated]] void SerialReceiver::telemetryWriteCustomFlightMode(const char *flightModeStr, bool armed)
         {
-            disarmed = true;
+            telemetry->setFlightModeData(flightModeStr, armed);
         }
-
-        telemetry->setFlightModeData(flightModeStr, disarmed);
-    }
-
-    [[deprecated]] void SerialReceiver::telemetryWriteCustomFlightMode(const char *flightModeStr, bool armed)
-    {
-        telemetry->setFlightModeData(flightModeStr, armed);
-    }
 #endif
 
 #if CRSF_TELEMETRY_GPS_ENABLED > 0
-    void SerialReceiver::telemetryWriteGPS(float latitude, float longitude, float altitude, float speed, float groundCourse, uint8_t satellites)
-    {
-        telemetry->setGPSData(latitude, longitude, altitude, speed, groundCourse, satellites);
-    }
+        void SerialReceiver::telemetryWriteGPS(float latitude, float longitude, float altitude, float speed, float groundCourse, uint8_t satellites)
+        {
+            telemetry->setGPSData(latitude, longitude, altitude, speed, groundCourse, satellites);
+        }
 #endif
 #endif
-} // namespace serialReceiverLayer
+    } // namespace serialReceiverLayer

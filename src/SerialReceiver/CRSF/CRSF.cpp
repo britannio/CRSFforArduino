@@ -69,29 +69,11 @@ namespace serialReceiverLayer
         timePerFrame = ((1000000 * packetCount) / (baudRate / (CRSF_FRAME_SIZE_MAX - 1)));
     }
 
-    bool CRSF::receiveFrames(uint8_t rxByte)
+    int CRSF::receiveFrames(uint8_t rxByte)
     {
         static uint8_t framePosition = 0;
-        static uint32_t frameStartTime = 0;
-        const uint32_t currentTime = micros();
 
-        /* Reset the frame position if the frame time has expired. */
-        if (currentTime - frameStartTime > timePerFrame)
-        {
-            framePosition = 0;
-
-            if (currentTime < frameStartTime)
-            {
-                frameStartTime = currentTime;
-            }
-        }
-
-        if (framePosition == 0)
-        {
-            frameStartTime = currentTime;
-        }
-
-        /* Assume the full frame lenthg is 5 bytes until the frame length byte is received. */
+        /* Assume the full frame length is 5 bytes until the frame length byte is received. */
         const int fullFrameLength = framePosition < 3 ? 5 : min(rxFrame.frame.frameLength + CRSF_FRAME_LENGTH_ADDRESS + CRSF_FRAME_LENGTH_FRAMELENGTH, (int)CRSF_FRAME_SIZE_MAX);
 
         if (framePosition < fullFrameLength)
@@ -104,10 +86,11 @@ namespace serialReceiverLayer
             {
                 /* Frame is complete, calculate the CRC and check if it is valid. */
                 const uint8_t crc = calculateFrameCRC();
-
-                if (crc == rxFrame.raw[fullFrameLength - 1])
+                const bool crcValid = (crc == rxFrame.raw[fullFrameLength - 1]);
+                const uint8_t frameType = rxFrame.frame.type;
+                if (crcValid)
                 {
-                    switch (rxFrame.frame.type)
+                    switch (frameType)
                     {
                         case crsfProtocol::CRSF_FRAMETYPE_RC_CHANNELS_PACKED:
                             if (rxFrame.frame.deviceAddress == CRSF_ADDRESS_FLIGHT_CONTROLLER)
@@ -121,7 +104,7 @@ namespace serialReceiverLayer
                         case CRSF_FRAMETYPE_LINK_STATISTICS:
                             if ((rxFrame.frame.deviceAddress == CRSF_ADDRESS_FLIGHT_CONTROLLER) && (rxFrame.frame.frameLength == CRSF_FRAME_ORIGIN_DEST_SIZE + CRSF_FRAME_LINK_STATISTICS_PAYLOAD_SIZE))
                             {
-                                const crsf_payload_link_statistics_t *linkStatisticsPayload = (const crsf_payload_link_statistics_t *)&rxFrame.frame.payload;
+                                const auto *linkStatisticsPayload = (const crsf_payload_link_statistics_t *)&rxFrame.frame.payload;
 
                                 linkStatistics.rssi = (linkStatisticsPayload->active_antenna ? linkStatisticsPayload->uplink_rssi_2 : linkStatisticsPayload->uplink_rssi_1);
                                 linkStatistics.lqi = linkStatisticsPayload->uplink_link_quality;
@@ -136,11 +119,11 @@ namespace serialReceiverLayer
                 /* Clear the frame buffer and reset the frame position. */
                 memset(rxFrame.raw, 0, CRSF_FRAME_SIZE_MAX);
                 framePosition = 0;
-                return true;
+                return crcValid ? frameType : 0;
             }
         }
 
-        return false;
+        return 0;
     }
 
     void CRSF::getFailSafe(bool *failSafe)
