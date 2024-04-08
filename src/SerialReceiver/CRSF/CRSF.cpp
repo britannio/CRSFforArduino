@@ -72,24 +72,6 @@ namespace serialReceiverLayer
     bool CRSF::receiveFrames(uint8_t rxByte)
     {
         static uint8_t framePosition = 0;
-        static uint32_t frameStartTime = 0;
-        const uint32_t currentTime = micros();
-
-        /* Reset the frame position if the frame time has expired. */
-        if (currentTime - frameStartTime > timePerFrame)
-        {
-            framePosition = 0;
-
-            if (currentTime < frameStartTime)
-            {
-                frameStartTime = currentTime;
-            }
-        }
-
-        if (framePosition == 0)
-        {
-            frameStartTime = currentTime;
-        }
 
         /* Assume the full frame lenthg is 5 bytes until the frame length byte is received. */
         const int fullFrameLength = framePosition < 3 ? 5 : min(rxFrame.frame.frameLength + CRSF_FRAME_LENGTH_ADDRESS + CRSF_FRAME_LENGTH_FRAMELENGTH, (int)CRSF_FRAME_SIZE_MAX);
